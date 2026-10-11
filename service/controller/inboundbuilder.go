@@ -119,9 +119,9 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 		}
 
 		proxySetting.NetworkList = &conf.NetworkList{"tcp", "udp"}
-		proxySetting.IVCheck = true
+		// IVCheck removed: field no longer exists in xray-core v1.260327.0
 		if config.DisableIVCheck {
-			proxySetting.IVCheck = false
+			// IVCheck removed: field no longer exists in xray-core v1.260327.0
 		}
 
 	case "dokodemo-door":
