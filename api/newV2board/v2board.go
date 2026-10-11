@@ -60,6 +60,9 @@ func New(apiConfig *api.Config) *APIClient {
 
 	if apiConfig.NodeType == "V2ray" && apiConfig.EnableVless {
 		nodeType = "vless"
+	} else if apiConfig.NodeType == "Hysteria2" {
+		// V2board serves Hysteria 1/2 under node_type=hysteria (version field tells which)
+		nodeType = "hysteria"
 	} else {
 		nodeType = strings.ToLower(apiConfig.NodeType)
 	}
@@ -190,6 +193,8 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		nodeInfo, err = c.parseTrojanNodeResponse(server)
 	case "Shadowsocks":
 		nodeInfo, err = c.parseSSNodeResponse(server)
+	case "Hysteria", "Hysteria2":
+		nodeInfo, err = c.parseHysteriaNodeResponse(server)
 	default:
 		return nil, fmt.Errorf("unsupported node type: %s", c.NodeType)
 	}
@@ -207,7 +212,7 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 	path := "/api/v1/server/UniProxy/user"
 
 	switch c.NodeType {
-	case "V2ray", "Trojan", "Shadowsocks", "Vmess", "Vless":
+	case "V2ray", "Trojan", "Shadowsocks", "Vmess", "Vless", "Hysteria", "Hysteria2":
 		break
 	default:
 		return nil, fmt.Errorf("unsupported node type: %s", c.NodeType)
@@ -253,7 +258,7 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 
 		u.DeviceLimit = c.DeviceLimit // todo waiting v2board send configuration
 		u.Email = u.UUID + "@v2board.user"
-		if c.NodeType == "Shadowsocks" {
+		if c.NodeType == "Shadowsocks" || c.NodeType == "Hysteria" || c.NodeType == "Hysteria2" {
 			u.Passwd = u.UUID
 		}
 		userList[i] = u
@@ -328,6 +333,32 @@ func (c *APIClient) parseTrojanNodeResponse(s *serverConfig) (*api.NodeInfo, err
 		NameServerConfig:  s.parseDNSConfig(),
 	}
 	return nodeInfo, nil
+}
+
+// parseHysteriaNodeResponse parse the response of a Hysteria2 node
+func (c *APIClient) parseHysteriaNodeResponse(s *serverConfig) (*api.NodeInfo, error) {
+	if s.Version != 0 && s.Version != 2 {
+		return nil, fmt.Errorf("only hysteria version 2 is supported, panel returned version %d", s.Version)
+	}
+	obfsPassword := s.HyObfsPassword
+	if obfsPassword == "" {
+		obfsPassword = s.HyObfsPasswordAlt
+	}
+	return &api.NodeInfo{
+		NodeType:             c.NodeType,
+		NodeID:               c.NodeID,
+		Port:                 uint32(s.ServerPort),
+		TransportProtocol:    "hysteria",
+		EnableTLS:            true,
+		Host:                 s.Host,
+		ServiceName:          s.ServerName,
+		NameServerConfig:     s.parseDNSConfig(),
+		HysteriaVersion:      2,
+		HysteriaUpMbps:       s.UpMbps,
+		HysteriaDownMbps:     s.DownMbps,
+		HysteriaObfs:         s.Obfs, // JSON key "obfs" is shared with the shadowsocks struct
+		HysteriaObfsPassword: obfsPassword,
+	}, nil
 }
 
 // parseSSNodeResponse parse the response for the given nodeInfo format

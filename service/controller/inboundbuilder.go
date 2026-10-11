@@ -124,6 +124,9 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 			// IVCheck removed: field no longer exists in xray-core v1.260327.0
 		}
 
+	case "Hysteria", "Hysteria2":
+		protocol = "hysteria"
+		proxySetting = &conf.HysteriaServerConfig{Version: 2}
 	case "dokodemo-door":
 		protocol = "dokodemo-door"
 		proxySetting = struct {
@@ -134,7 +137,7 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 			NetworkList: []string{"tcp", "udp"},
 		}
 	default:
-		return nil, fmt.Errorf("unsupported node type: %s, Only support: V2ray, Trojan, Shadowsocks, and Shadowsocks-Plugin", nodeInfo.NodeType)
+		return nil, fmt.Errorf("unsupported node type: %s, Only support: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin, and Hysteria2", nodeInfo.NodeType)
 	}
 
 	setting, err := json.Marshal(proxySetting)
@@ -183,6 +186,15 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 			AcceptProxyProtocol: nodeInfo.AcceptProxyProtocol,
 		}
 		streamSetting.HTTPUPGRADESettings = httpupgradeSettings
+	case "hysteria":
+		streamSetting.HysteriaSettings = &conf.HysteriaConfig{Version: 2}
+		// Salamander obfuscation (UDP mask), only if the panel enabled obfs
+		if nodeInfo.HysteriaObfs != "" && nodeInfo.HysteriaObfsPassword != "" {
+			raw := json.RawMessage(fmt.Sprintf(`{"password":%q}`, nodeInfo.HysteriaObfsPassword))
+			streamSetting.FinalMask = &conf.FinalMask{
+				Udp: []conf.Mask{{Type: "salamander", Settings: &raw}},
+			}
+		}
 	case "splithttp", "xhttp":
 		splithttpSetting := &conf.SplitHTTPConfig{
 			Path: nodeInfo.Path,
@@ -237,6 +249,9 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 		}
 		tlsSettings := &conf.TLSConfig{
 			RejectUnknownSNI: config.CertConfig.RejectUnknownSni,
+		}
+		if networkType == "hysteria" {
+			tlsSettings.ALPN = &conf.StringList{"h3"}
 		}
 		tlsSettings.Certs = append(tlsSettings.Certs, &conf.TLSCertConfig{CertFile: certFile, KeyFile: keyFile, OcspStapling: 3600})
 		streamSetting.TLSSettings = tlsSettings

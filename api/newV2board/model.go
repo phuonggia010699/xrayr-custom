@@ -8,6 +8,7 @@ type serverConfig struct {
 	shadowsocks
 	v2ray
 	trojan
+	hysteria
 
 	ServerPort int `json:"server_port"`
 	BaseConfig struct {
@@ -58,6 +59,14 @@ type v2ray struct {
 type trojan struct {
 	Host       string `json:"host"`
 	ServerName string `json:"server_name"`
+}
+
+type hysteria struct {
+	Version           int32  `json:"version"`
+	UpMbps            int    `json:"up_mbps"`
+	DownMbps          int    `json:"down_mbps"`
+	HyObfsPassword    string `json:"obfs-password"`
+	HyObfsPasswordAlt string `json:"obfs_password"`
 }
 
 type route struct {

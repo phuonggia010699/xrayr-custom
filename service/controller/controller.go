@@ -415,6 +415,8 @@ func (c *Controller) addNewUser(userInfo *[]api.UserInfo, nodeInfo *api.NodeInfo
 		}
 	case "Trojan":
 		users = c.buildTrojanUser(userInfo)
+	case "Hysteria", "Hysteria2":
+		users = c.buildHysteriaUser(userInfo)
 	case "Shadowsocks":
 		users = c.buildSSUser(userInfo, nodeInfo.CypherMethod)
 	case "Shadowsocks-Plugin":

@@ -12,6 +12,7 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/infra/conf"
+	"github.com/xtls/xray-core/proxy/hysteria/account"
 	"github.com/xtls/xray-core/proxy/shadowsocks"
 	"github.com/xtls/xray-core/proxy/shadowsocks_2022"
 	"github.com/xtls/xray-core/proxy/trojan"
@@ -69,6 +70,21 @@ func (c *Controller) buildTrojanUser(userInfo *[]api.UserInfo) (users []*protoco
 			Level:   0,
 			Email:   c.buildUserTag(&user),
 			Account: serial.ToTypedMessage(trojanAccount),
+		}
+	}
+	return users
+}
+
+func (c *Controller) buildHysteriaUser(userInfo *[]api.UserInfo) (users []*protocol.User) {
+	users = make([]*protocol.User, len(*userInfo))
+	for i, user := range *userInfo {
+		hyAccount := &account.Account{
+			Auth: user.UUID, // V2board: the user's uuid is the Hysteria password
+		}
+		users[i] = &protocol.User{
+			Level:   0,
+			Email:   c.buildUserTag(&user),
+			Account: serial.ToTypedMessage(hyAccount),
 		}
 	}
 	return users
