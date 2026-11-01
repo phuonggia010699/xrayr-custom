@@ -20,6 +20,8 @@
 # Cú pháp: install-xrayr.sh [tùy chọn] ID [ID ...]
 #   --api-host URL      địa chỉ panel (được nhớ lại sau lần đầu)
 #   --api-key KEY       khóa panel (nên để script hỏi, không hiện khi gõ)
+#   --env-url URL       tải file thông tin dùng chung (xrayr.env hoặc xrayr.env.enc đã mã hóa);
+#                       nếu mã hóa, script hỏi mật khẩu một lần (hoặc đặt biến XRAYR_PASS)
 #   --cf-token TOKEN    token Cloudflare (quyền Zone:Read + DNS:Edit; nên để script hỏi)
 #   --cert-mode MODE    dns | http | file | none (mặc định dns)
 #   --cert-domain NAME  tên miền cấp chứng chỉ (mặc định lấy từ panel hoặc node trước đó)
@@ -50,7 +52,7 @@ SERVICE=/etc/systemd/system/XrayR.service
 
 API_HOST="${API_HOST:-}" ; API_KEY="" ; CF_TOKEN="" ; CERT_MODE="" ; CERT_DOMAIN_OPT="" ; CERT_EMAIL_OPT=""
 FORCE_TYPE="" ; PANEL_TYPE="" ; ACTION=add ; DRY_RUN=0
-IDS=() ; REMOVE_IDS=() ; BLOCK_CN=1
+IDS=() ; REMOVE_IDS=() ; BLOCK_CN=1 ; ENV_URL=""
 
 die()  { echo "LỖI: $*" >&2; exit 1; }
 note() { echo ">> $*"; }
@@ -62,13 +64,14 @@ while [[ $# -gt 0 ]]; do
     --upgrade) ACTION=upgrade; shift; continue ;;
     --block-cn) ACTION=blockcn; shift; continue ;;
     --allow-cn) BLOCK_CN=0; shift; continue ;;
-    --api-host|--api-key|--cf-token|--cert-mode|--cert-domain|--cert-email|--node-type|--panel-type|--remove)
+    --api-host|--api-key|--cf-token|--env-url|--cert-mode|--cert-domain|--cert-email|--node-type|--panel-type|--remove)
       [[ $# -ge 2 ]] || die "Thiếu giá trị cho $1" ;;
   esac
   case "$1" in
     --api-host)    API_HOST="$2"; shift 2 ;;
     --api-key)     API_KEY="$2"; shift 2 ;;
     --cf-token)    CF_TOKEN="$2"; shift 2 ;;
+    --env-url)     ENV_URL="$2"; shift 2 ;;
     --cert-mode)   CERT_MODE="$2"; shift 2 ;;
     --cert-domain) CERT_DOMAIN_OPT="$2"; shift 2 ;;
     --cert-email)  CERT_EMAIL_OPT="$2"; shift 2 ;;
@@ -262,7 +265,44 @@ import_legacy() {
 state_get()  { [[ -f "$STATE" ]] && grep -E "^$1\|" "$STATE" | head -1 || true; }
 state_drop() { [[ -f "$STATE" ]] && { grep -vE "^$1\|" "$STATE" > "$STATE.tmp" || true; mv -f "$STATE.tmp" "$STATE"; } || true; }
 
+# Tải thông tin dùng chung (ApiHost, ApiKey, token...) từ một URL; hỗ trợ file mã hóa bằng openssl
+fetch_env() {
+  local tmp plain pass
+  tmp="$(mktemp)"; plain="$(mktemp)"
+  curl -fsSL --retry 3 -o "$tmp" "$ENV_URL" || { rm -f "$tmp" "$plain"; die "Không tải được $ENV_URL"; }
+  local armor=""
+  head -c 8 "$tmp" | grep -q '^U2FsdGVk' && armor="-a"   # bản mã hóa dạng chữ (base64), dễ dán/chép
+  if [[ -n "$armor" ]] || head -c 8 "$tmp" | grep -q '^Salted__'; then
+    command -v openssl >/dev/null || pkg_install openssl
+    pass="${XRAYR_PASS:-}"
+    if [[ -z "$pass" ]]; then
+      [[ -t 0 ]] || { rm -f "$tmp" "$plain"; die "File mã hóa cần mật khẩu: đặt XRAYR_PASS hoặc chạy trong terminal."; }
+      read -rsp "Mật khẩu giải mã thông tin dùng chung: " pass; echo
+    fi
+    XRAYR_P="$pass" openssl enc -d $armor -aes-256-cbc -pbkdf2 -iter 200000 -pass env:XRAYR_P -in "$tmp" -out "$plain" 2>/dev/null \
+      || { rm -f "$tmp" "$plain"; die "Sai mật khẩu hoặc file hỏng."; }
+  else
+    cp "$tmp" "$plain"
+  fi
+  rm -f "$tmp"
+  grep -q '^SAVED_API_KEY=' "$plain" || { rm -f "$plain"; die "File không có SAVED_API_KEY, có thể sai mật khẩu hoặc sai file."; }
+  # chỉ nhận các khóa SAVED_*, không chạy bất cứ lệnh nào khác trong file
+  local line name val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    name="${line%%=*}"; val="${line#*=}"
+    case "$name" in
+      SAVED_API_HOST|SAVED_API_KEY|SAVED_CF_TOKEN|SAVED_CERT_EMAIL|SAVED_CERT_MODE|SAVED_PANEL_TYPE)
+        val="${val#\"}"; val="${val%\"}"; val="${val#\'}"; val="${val%\'}"
+        printf -v "$name" '%s' "$val" ;;
+    esac
+  done < "$plain"
+  rm -f "$plain"
+  note "Đã nạp thông tin dùng chung từ $ENV_URL"
+}
+
 load_env
+[[ -z "$ENV_URL" ]] || fetch_env
 # --dry-run làm việc trên bản sao tạm của danh sách node, không đổi gì trên máy
 if [[ "$DRY_RUN" -eq 1 ]]; then
   REAL_STATE="$STATE"; STATE="$(mktemp)"; rm -f "$STATE"
