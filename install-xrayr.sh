@@ -32,7 +32,7 @@
 #   --list              liệt kê node đang cấu hình trên VPS này
 #   --remove ID         bỏ node khỏi VPS này
 #   --dry-run           chỉ dò panel và in config, không cài gì (để thử)
-#   --block-cn          bật chặn lưu lượng đi tới Trung Quốc (geoip:cn, geosite:cn) và dải IP nội bộ
+#   --block-cn          bật chặn lưu lượng đi tới Trung Quốc (geoip:cn) và dải IP nội bộ
 #                       trên VPS ĐANG CÓ XrayR; giữ nguyên node, tự lùi nếu dịch vụ không chạy
 #   --allow-cn          khi thêm node mới: KHÔNG tự bật chặn lưu lượng về Trung Quốc (mặc định là chặn)
 #   --upgrade           CHỈ thay file chạy XrayR, giữ nguyên config.yml và dịch vụ hiện có;
@@ -171,7 +171,6 @@ write_block_cn_files() { # $1 = thư mục chứa file
   "domainStrategy": "IPIfNonMatch",
   "rules": [
     { "type": "field", "outboundTag": "block", "ip": ["geoip:private"] },
-    { "type": "field", "outboundTag": "block", "domain": ["geosite:cn"] },
     { "type": "field", "outboundTag": "block", "ip": ["geoip:cn"] }
   ]
 }
@@ -475,6 +474,8 @@ render_node() { # id nt vless cm dom port proto reality label
       EnableFallback: false
       DisableLocalREALITYConfig: $([[ "$rl" == "1" ]] && echo true || echo false)
       EnableREALITY: false
+      REALITYConfigs:
+        Show: false
       CertConfig:
         CertMode: $cm
         CertDomain: $(yq_str "$dom")
